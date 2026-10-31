@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tryanything</string>
+    <string name="title_activity_main">Tryanything</string>
+    <string name="package_name">app.tryanything.mobile</string>
+    <string name="custom_url_scheme">app.tryanything.mobile</string>
+</resources>

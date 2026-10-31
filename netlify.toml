@@ -1,0 +1,18 @@
+# Netlify builds Next.js 15 automatically with the OpenNext runtime (API routes become functions).
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# The service worker must never be served stale, or app updates get stuck behind the old cache.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+# Required environment variables (set in Netlify > Site configuration > Environment variables):
+#   DECART_API_KEY   server-only secret from platform.decart.ai (mark as secret)
+#   APP_ORIGINS      https://tryanything.netlify.app   (comma-separate custom domains too)
