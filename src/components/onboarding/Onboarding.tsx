@@ -104,6 +104,7 @@ export function Onboarding() {
           closet={closet}
           onHoldPicker={() => session.holdForPicker()}
           freeMode={mode === "free"}
+          onCaptureFrame={mode === "free" ? free.captureFrame : undefined}
           fellBack={fellBack}
           onToggleMode={() => {
             if (session.state.phase !== "idle") return;

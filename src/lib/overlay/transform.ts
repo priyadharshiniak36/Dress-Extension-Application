@@ -114,6 +114,22 @@ export function computeQuad(lm: readonly Landmark[], aspect: number, W: number, 
   };
 }
 
+/**
+ * Coaching text for the visitor, or "" when the framing is good. A garment can only be fitted if the shoulders and
+ * waist are visible; a person who is too close (or off to the side) gets an oversized, misplaced garment.
+ */
+export function framingHint(lm: readonly Landmark[] | null): string {
+  const l = lm?.[L_SHOULDER];
+  const r = lm?.[R_SHOULDER];
+  if (!lm || !l || !r || vis(l) < MIN_SHOULDER_VIS || vis(r) < MIN_SHOULDER_VIS) return "Step back so your shoulders and upper body are in view.";
+  const lh = lm[L_HIP];
+  const rh = lm[R_HIP];
+  if (!lh || !rh || vis(lh) < MIN_HIP_VIS || vis(rh) < MIN_HIP_VIS) return "Step back a little so your waist is in view for a proper fit.";
+  const shoulderSpan = Math.abs(l.x - r.x);
+  if (shoulderSpan > 0.7) return "You're very close. Step back so the garment fits.";
+  return "";
+}
+
 /** Exponential smoothing of quads, with a short hold then fade-out when tracking is lost. */
 export function createQuadSmoother(opts: { alpha?: number; holdMs?: number } = {}) {
   const alpha = opts.alpha ?? 0.5;

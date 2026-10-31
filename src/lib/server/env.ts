@@ -13,6 +13,8 @@ const schema = z.object({
   DECART_SCOPE_TOKEN_TO_MODEL: boolish,
   DECART_TOKEN_TTL_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
   DECART_MAX_SESSION_SECONDS: z.coerce.number().int().min(10).max(3600).default(180),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_IMAGE_MODEL: z.string().min(1).default("gemini-nano-banana-2.1"),
 });
 
 export type ServerEnv = {
@@ -22,6 +24,8 @@ export type ServerEnv = {
   scopeTokenToModel: boolean;
   tokenTtlSeconds: number;
   maxSessionSeconds: number;
+  geminiApiKey: string | undefined;
+  geminiImageModel: string;
 };
 
 let cached: ServerEnv | null = null;
@@ -37,6 +41,8 @@ export function getServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv
     scopeTokenToModel: parsed.DECART_SCOPE_TOKEN_TO_MODEL,
     tokenTtlSeconds: parsed.DECART_TOKEN_TTL_SECONDS,
     maxSessionSeconds: parsed.DECART_MAX_SESSION_SECONDS,
+    geminiApiKey: parsed.GEMINI_API_KEY,
+    geminiImageModel: parsed.GEMINI_IMAGE_MODEL,
   };
   if (source === process.env) cached = env;
   return env;

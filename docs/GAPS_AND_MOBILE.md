@@ -84,6 +84,25 @@ Decart's realtime AI is paid per second (about $0.02/s), and an account with no 
   CSP violations and draws the garment on the torso; consent dialog closes correctly; 61/61 tests.
   **Not verified:** real phone cameras, frame rate on low-end phones, iOS Safari (`canvas.captureStream` needs iOS 15+).
 
+## Realistic photo (Google Gemini)
+A "Realistic photo" button appears in free mode when the server has `GEMINI_API_KEY`. It takes one clean camera photo,
+asks the visitor to confirm, sends it with the selected garment to `POST /api/v1/tryon-photo`, which calls Gemini's
+image-editing API (`/v1beta/interactions`, model `gemini-nano-banana-2.1`) and returns a picture of the person wearing
+the garment. Not live (about 5–15 s per photo), but it replaces the person's actual clothing, like Decart does.
+
+- **A Gemini Pro *subscription* (gemini.google.com) is not API access.** The website calls the API with a key from
+  Google AI Studio (https://aistudio.google.com/apikey). Per Google's pricing pages, image output has no free tier, so
+  billing must be enabled; roughly $0.03–0.05 per photo. Check AI Studio for what your plan includes.
+- Privacy: the photo is sent to Google only after an explicit confirmation, is never stored by us, and the prompt is fixed
+  (no visitor text reaches the model). Server limits: same-origin only, 3 requests/min/IP, `GEMINI_DAILY_LIMIT` per
+  instance (default 100), JPEG/PNG/WebP ≤ 2 MB each checked by magic bytes.
+- Files: `src/lib/server/gemini.ts`, `src/app/api/v1/tryon-photo/route.ts`, `src/components/onboarding/PhotoTryOn.tsx`,
+  `tests/gemini.test.ts` (mocked network).
+- Verified: unit tests (request shape, tolerant response parsing, errors, limits, validation); against the real Google
+  endpoint with a fake key the route returns a clean 502 and Google answers 400 (endpoint exists, key rejected).
+  **Not verified:** a successful image with a real key (response shape parsing is tolerant but unconfirmed), result quality,
+  the dialog on a real phone. Vercel serverless functions need `maxDuration` (set to 60 s in the route).
+
 ## Mobile app
 
 ### 1. PWA (done): installable, works today

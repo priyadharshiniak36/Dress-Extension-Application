@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { removeBackground, estimateBackground, type Pixels } from "@/lib/overlay/cutout";
-import { computeQuad, createQuadSmoother, pointInQuad, forearmPolygons, type Landmark, type Quad } from "@/lib/overlay/transform";
+import { computeQuad, createQuadSmoother, pointInQuad, forearmPolygons, framingHint, type Landmark, type Quad } from "@/lib/overlay/transform";
 import { affineFor, quadPoint } from "@/lib/overlay/warp";
 import { meanLuminance, toneForLuminance } from "@/lib/overlay/lighting";
 
@@ -194,5 +194,21 @@ describe("lighting", () => {
     expect(toneForLuminance(0)).toBe(0.7);
     expect(toneForLuminance(0.5)).toBeGreaterThan(0.9);
     expect(toneForLuminance(0.5)).toBeLessThan(1.05);
+  });
+});
+
+describe("framingHint", () => {
+  const body = (hipVis: number, shoulderX: [number, number] = [0.4, 0.6]) =>
+    lm({ 11: P(shoulderX[1], 0.3), 12: P(shoulderX[0], 0.3), 23: P(0.57, 0.7, hipVis), 24: P(0.43, 0.7, hipVis) });
+  it("is empty when shoulders and waist are visible", () => {
+    expect(framingHint(body(1))).toBe("");
+  });
+  it("asks the visitor to step back when no body, no shoulders or no waist is visible", () => {
+    expect(framingHint(null)).toMatch(/step back/i);
+    expect(framingHint([])).toMatch(/step back/i);
+    expect(framingHint(body(0.1))).toMatch(/waist/i);
+  });
+  it("warns when the shoulders fill most of the frame width", () => {
+    expect(framingHint(body(1, [0.1, 0.9]))).toMatch(/close/i);
   });
 });

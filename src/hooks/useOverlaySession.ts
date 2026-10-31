@@ -5,7 +5,7 @@ import type { Garment } from "@/lib/garments";
 import { track } from "@/lib/analytics";
 import { loadPose } from "@/lib/overlay/pose";
 import { loadSprite, type Sprite } from "@/lib/overlay/sprite";
-import { computeQuad, createQuadSmoother, forearmPolygons, type Landmark, type Quad } from "@/lib/overlay/transform";
+import { computeQuad, createQuadSmoother, forearmPolygons, framingHint, type Landmark, type Quad } from "@/lib/overlay/transform";
 import { drawWarped } from "@/lib/overlay/warp";
 import { meanLuminance, tintSprite, toneForLuminance } from "@/lib/overlay/lighting";
 import { userMessageFor, type EndReason, type Phase, type TryOnState } from "@/hooks/useTryOnSession";
@@ -18,6 +18,7 @@ const initial: TryOnState = {
   secondsLeft: 0,
   secondsMax: 0, // 0 = no timer: free mode has no session cap
   pinned: true,
+  hint: "",
   endReason: null,
 };
 
@@ -44,6 +45,7 @@ export function useOverlaySession(opts: { garments: readonly Garment[] }) {
   const activeRef = useRef(0);
   const spriteRef = useRef<Sprite | null>(null);
   const pickerHoldUntil = useRef(0);
+  const hintRef = useRef("");
   const sessionIdRef = useRef<string | null>(null);
 
   const teardown = useCallback((reason: EndReason, nextPhase: Phase) => {
@@ -90,6 +92,7 @@ export function useOverlaySession(opts: { garments: readonly Garment[] }) {
       return;
     }
     busyRef.current = true;
+    hintRef.current = "";
     const epoch = ++epochRef.current;
     const sid = (sessionIdRef.current = `f_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
     setState({ ...initial, phase: "camera" });
@@ -155,6 +158,11 @@ export function useOverlaySession(opts: { garments: readonly Garment[] }) {
           try {
             lastLms = (pose.detectForVideo(v, performance.now()).landmarks[0] as Landmark[] | undefined) ?? null;
             raw = lastLms ? computeQuad(lastLms, sprite.aspect, W, H) : null;
+            const next = framingHint(lastLms);
+            if (next !== hintRef.current) {
+              hintRef.current = next;
+              setState((s) => ({ ...s, hint: next }));
+            }
           } catch {
             lastLms = null; // one bad frame must not stop the camera feed
           }
@@ -229,6 +237,18 @@ export function useOverlaySession(opts: { garments: readonly Garment[] }) {
   const holdForPicker = useCallback((ms = 120_000) => {
     pickerHoldUntil.current = Date.now() + ms;
   }, []);
+  /** A clean camera photo (no garment drawn on it, ≤1024 px JPEG) for the realistic photo try-on. */
+  const captureFrame = useCallback(async (): Promise<Blob | null> => {
+    const l = live.current;
+    if (!l || l.video.readyState < 2) return null;
+    const k = Math.min(1, 1024 / Math.max(l.video.videoWidth, l.video.videoHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(l.video.videoWidth * k);
+    c.height = Math.round(l.video.videoHeight * k);
+    c.getContext("2d")!.drawImage(l.video, 0, 0, c.width, c.height);
+    return new Promise((resolve) => c.toBlob(resolve, "image/jpeg", 0.9));
+  }, []);
+
   const stop = useCallback((reason: EndReason = "user") => teardown(reason, "ended"), [teardown]);
   const reset = useCallback(() => {
     teardown("user", "idle");
@@ -265,5 +285,5 @@ export function useOverlaySession(opts: { garments: readonly Garment[] }) {
     };
   }, [teardown]);
 
-  return { state, outputRef, start, stop, reset, selectGarment, holdForPicker, sessionId: sessionIdRef };
+  return { state, outputRef, start, stop, reset, selectGarment, holdForPicker, captureFrame, sessionId: sessionIdRef };
 }

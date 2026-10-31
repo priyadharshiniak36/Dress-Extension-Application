@@ -6,6 +6,7 @@ import { ROTATION_SECONDS, type TryOnState } from "@/hooks/useTryOnSession";
 import { Arrow, Button, Eyebrow, Title } from "@/components/ui";
 import { track } from "@/lib/analytics";
 import type { useCloset } from "@/hooks/useCloset";
+import { PhotoTryOn } from "./PhotoTryOn";
 
 type Closet = ReturnType<typeof useCloset>;
 
@@ -52,6 +53,7 @@ export function DressingRoom({
   freeMode,
   fellBack,
   onToggleMode,
+  onCaptureFrame,
 }: {
   garments: readonly Garment[];
   state: TryOnState;
@@ -68,6 +70,8 @@ export function DressingRoom({
   /** Free mode was switched on automatically because AI try-on was unavailable. */
   fellBack: boolean;
   onToggleMode: () => void;
+  /** Clean camera photo for the realistic photo try-on (free mode only). */
+  onCaptureFrame?: () => Promise<Blob | null>;
 }) {
   const live = state.phase === "live";
   const connecting = state.phase === "connecting" || state.phase === "camera";
@@ -220,16 +224,25 @@ export function DressingRoom({
               <span className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em]">
                 <span className="pulse-dot h-2 w-2 rounded-full bg-live" /> Live
               </span>
-              {state.secondsMax > 0 ? <TimerRing seconds={state.secondsLeft} max={state.secondsMax} pinned={state.pinned} /> : <span />}
+              {state.secondsMax > 0 ? (
+                <TimerRing seconds={state.secondsLeft} max={state.secondsMax} pinned={state.pinned} />
+              ) : freeMode && onCaptureFrame ? (
+                <PhotoTryOn garment={active} capture={onCaptureFrame} />
+              ) : (
+                <span />
+              )}
             </div>
 
             {/* Hint / nudge toast */}
             <div
               className={`glass absolute left-1/2 top-20 z-10 w-[86%] -translate-x-1/2 rounded-2xl px-4 py-3 text-center text-sm font-medium transition duration-500 ${
-                hint ? "opacity-100" : "pointer-events-none -translate-y-2 opacity-0"
+                hint || state.hint ? "opacity-100" : "pointer-events-none -translate-y-2 opacity-0"
               }`}
+              role="status"
             >
-              {freeMode
+              {state.hint
+                ? state.hint
+                : freeMode
                 ? fellBack
                   ? "AI try-on is busy, so you're in free mode. Face the camera and tap a garment."
                   : "Free mode: runs on your phone. Face the camera and tap a garment."

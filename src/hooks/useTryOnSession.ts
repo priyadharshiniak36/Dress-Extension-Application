@@ -33,6 +33,8 @@ export type TryOnState = {
   secondsMax: number;
   /** User picked/added a garment, so auto-rotation is off. */
   pinned: boolean;
+  /** Live coaching shown over the video (free mode: "step back…"). Empty when framing is fine. */
+  hint: string;
   endReason: EndReason | null;
 };
 
@@ -44,6 +46,7 @@ const initial: TryOnState = {
   secondsLeft: ROTATION_SECONDS,
   secondsMax: ROTATION_SECONDS,
   pinned: false,
+  hint: "",
   endReason: null,
 };
 
