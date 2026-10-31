@@ -14,7 +14,8 @@ const extraConnect = (process.env.CSP_CONNECT_EXTRA ?? "")
 const csp = [
   "default-src 'self'",
   // TODO(prod): replace 'unsafe-inline' with per-request nonces.
-  "script-src 'self' 'unsafe-inline'",
+  // 'wasm-unsafe-eval': MediaPipe pose tracking (free mode) compiles WebAssembly. It does not allow JS eval().
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",

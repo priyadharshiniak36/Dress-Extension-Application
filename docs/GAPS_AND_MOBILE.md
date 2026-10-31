@@ -55,6 +55,35 @@ Same-origin gated, 20 req/min/IP, https only, no credentials or custom ports, DN
 **pinned** for the connection (no DNS rebinding), redirects re-validated (max 3), 8 MB streaming cap, 8 s deadline,
 body must sniff as JPEG/PNG/WebP/GIF (SVG refused; remote `Content-Type` ignored). Covered by `tests/garment-image.test.ts`.
 
+## Free on-device mode (default)
+Decart's realtime AI is paid per second (about $0.02/s), and an account with no credits gets
+`Insufficient credits` (WebSocket close 1008). So the app now has two modes:
+
+| | Free mode (default) | AI mode |
+|---|---|---|
+| Cost | none; runs on the visitor's phone | Decart credits |
+| How | MediaPipe pose model finds shoulders/hips, the garment photo (background removed) is drawn on the torso | Decart `lucy-vton` realtime |
+| Look | 2D overlay, like a sticker that follows you | photorealistic |
+| Camera data | never leaves the device | streamed to Decart |
+| Time cap | none | 60 s demo / 180 s token cap |
+
+- Switch with the link under "Turn on camera". Set `NEXT_PUBLIC_DEFAULT_MODE=ai` to make AI the default.
+- If AI mode can't start (no credits, busy, down) the app **falls back to free mode automatically**.
+- Works with every garment input (uploads, drops, camera photos, links). Best for tops, jackets and hoodies; long
+  garments (dresses, trousers) are extended down the body direction from the shoulders and do not follow the legs.
+- Computer-vision pipeline (no keys, no server): MediaPipe pose → garment **mesh warp** onto the shoulder/hip quad
+  (`transform.ts` + `warp.ts`, follows body width, tilt and turning) → **forearm occlusion** (arms crossing the chest are
+  redrawn over the garment) → **lighting match** (`lighting.ts`, garment brightness follows the room) → temporal smoothing.
+  Still a 2D overlay: no cloth physics, no sleeves wrapping the arms, no side-on realism. A photorealistic result needs a
+  generative model (GPU/API), which is what AI mode is for.
+- Files: `src/hooks/useOverlaySession.ts`, `src/lib/overlay/{cutout,transform,pose,sprite}.ts`, tests in
+  `tests/overlay.test.ts`. The pose model and wasm are self-hosted in `public/mediapipe/` (33 MB; model
+  `pose_landmarker_lite.task` from Google's MediaPipe model storage, Apache-2.0), so there is no third-party request.
+- CSP gained `'wasm-unsafe-eval'` (needed to run WebAssembly; it does not allow JS `eval`).
+- Verified: production build (CSP on), simulated camera showing MediaPipe's sample photo: reaches LIVE in ~3 s with no
+  CSP violations and draws the garment on the torso; consent dialog closes correctly; 61/61 tests.
+  **Not verified:** real phone cameras, frame rate on low-end phones, iOS Safari (`canvas.captureStream` needs iOS 15+).
+
 ## Mobile app
 
 ### 1. PWA (done): installable, works today

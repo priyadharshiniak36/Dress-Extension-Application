@@ -55,12 +55,14 @@ export function userMessageFor(stage: FailStage, err: unknown): string {
     if (/NotFound|Overconstrained/i.test(msg)) return "We couldn't find a camera on this device.";
     return "Could not start the camera. Check permissions and retry.";
   }
+  // Our Decart account is out of credits: nothing the visitor can fix, and not theirs to see billing detail about.
+  if (/insufficient credits|payment required|402/i.test(msg)) return "Try-on is temporarily unavailable. Please check back soon.";
   if (/capacity|concurrent session limit|rate_limited|429/i.test(msg))
     return "Our servers are busy right now. Please try again in a minute.";
   return "Our try-on servers couldn't start your session. Please try again in a moment.";
 }
 
-export function useTryOnSession(opts: { garments: readonly Garment[]; onTimerEnded?: () => void }) {
+export function useTryOnSession(opts: { garments: readonly Garment[]; onTimerEnded?: () => void; onUnavailable?: () => void }) {
   const { garments } = opts;
   const garmentsRef = useRef(garments);
   garmentsRef.current = garments;
@@ -69,6 +71,8 @@ export function useTryOnSession(opts: { garments: readonly Garment[]; onTimerEnd
   const [state, setState] = useState<TryOnState>(initial);
   const outputRef = useRef<HTMLVideoElement | null>(null);
 
+  const onUnavailableRef = useRef(opts.onUnavailable);
+  onUnavailableRef.current = opts.onUnavailable;
   const onTimerEndedRef = useRef(opts.onTimerEnded);
   onTimerEndedRef.current = opts.onTimerEnded;
 
@@ -238,16 +242,32 @@ export function useTryOnSession(opts: { garments: readonly Garment[]; onTimerEnd
         // Slug not in this SDK version's registry: same definition shape the SDK uses for lucy-vton.
         model = { name: token.model, urlPath: "/v1/stream", fps: 30, width: 1088, height: 624, inputSchema: {} };
       }
-      const client = (await sdk.createDecartClient({ apiKey: token.apiKey }).realtime.connect(stream, {
-        model: model as never,
-        onRemoteStream: (remote: MediaStream) => {
-          if (epoch !== epochRef.current) return;
-          clearTimeout(timersRef.current.countdown);
-          if (outputRef.current) outputRef.current.srcObject = remote;
-          setState((s) => ({ ...s, phase: "live", status: "", countdownWord: null }));
-          track("session_started", { model: token.model }, sid);
+      // When Decart refuses a session (no credits, policy, capacity) the SDK's connect() only rejects with a
+      // generic "Stale connect attempt"; the real reason arrives as a logged server error. Capture it.
+      let serverError = "";
+      const base = sdk.createConsoleLogger("info");
+      const logger = {
+        ...base,
+        error: (msg: string, data?: Record<string, unknown>) => {
+          if (data && typeof data.error === "string" && /server error/i.test(msg)) serverError = data.error;
+          base.error(msg, data);
         },
-      })) as unknown as RealtimeClient;
+      };
+      let client: RealtimeClient;
+      try {
+        client = (await sdk.createDecartClient({ apiKey: token.apiKey, logger }).realtime.connect(stream, {
+          model: model as never,
+          onRemoteStream: (remote: MediaStream) => {
+            if (epoch !== epochRef.current) return;
+            clearTimeout(timersRef.current.countdown);
+            if (outputRef.current) outputRef.current.srcObject = remote;
+            setState((s) => ({ ...s, phase: "live", status: "", countdownWord: null }));
+            track("session_started", { model: token.model }, sid);
+          },
+        })) as unknown as RealtimeClient;
+      } catch (connectErr) {
+        throw serverError ? new Error(serverError) : connectErr;
+      }
 
       if (epoch !== epochRef.current) {
         client.disconnect();
@@ -276,8 +296,13 @@ export function useTryOnSession(opts: { garments: readonly Garment[]; onTimerEnd
         process.env.NODE_ENV !== "production" && stage !== "camera"
           ? `${userMessageFor(stage, err)} [dev: ${String((err as Error)?.message ?? err).slice(0, 240)}]`
           : userMessageFor(stage, err);
+      // Anything other than a camera problem means the AI service can't serve this visitor (no credits, busy, down):
+      // hand over to the free on-device mode instead of leaving them at a dead end. Called before the state
+      // updates below so React applies the mode switch and the idle state in one render.
+      const fallback = stage !== "camera" ? onUnavailableRef.current : undefined;
+      fallback?.();
       teardown("error", "idle");
-      setState((s) => ({ ...s, status }));
+      if (!fallback) setState((s) => ({ ...s, status }));
     }
   }, [garmentBlob, startRotation, teardown]);
 

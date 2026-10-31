@@ -32,7 +32,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   // Immutable build assets, garment photos and icons: cache first.
-  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/garments/") || url.pathname.startsWith("/icons/")) {
+  if (
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/garments/") ||
+    url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith("/mediapipe/")
+  ) {
     event.respondWith(
       caches.match(req).then(
         (hit) =>

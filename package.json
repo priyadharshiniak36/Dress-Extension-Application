@@ -20,6 +20,7 @@
     "@capacitor/core": "^8.6.0",
     "@capacitor/ios": "^8.6.0",
     "@decartai/sdk": "0.2.14",
+    "@mediapipe/tasks-vision": "1.2.0",
     "canvas-confetti": "^1.9.3",
     "next": "15.5.28",
     "react": "^19.0.0",

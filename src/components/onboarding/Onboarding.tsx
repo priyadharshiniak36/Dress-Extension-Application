@@ -4,6 +4,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { GARMENTS } from "@/lib/garments";
 import { progressIndex, initialOnboarding, onboardingReducer, type Step } from "@/lib/onboarding";
 import { useTryOnSession } from "@/hooks/useTryOnSession";
+import { useOverlaySession } from "@/hooks/useOverlaySession";
 import { useCloset } from "@/hooks/useCloset";
 import { track } from "@/lib/analytics";
 import { celebrate } from "@/lib/confetti";
@@ -19,13 +20,26 @@ export function Onboarding() {
   const closet = useCloset();
   const garments = useMemo(() => [...GARMENTS, ...closet.custom], [closet.custom]);
 
-  const session = useTryOnSession({
+  // Free on-device mode is the default (no AI cost). NEXT_PUBLIC_DEFAULT_MODE=ai makes the paid AI session the default.
+  const [mode, setMode] = useState<"ai" | "free">(process.env.NEXT_PUBLIC_DEFAULT_MODE === "ai" ? "ai" : "free");
+  const [fellBack, setFellBack] = useState(false);
+
+  const free = useOverlaySession({ garments });
+  const ai = useTryOnSession({
     garments,
     onTimerEnded: () => {
       dispatch({ type: "TRY_TIMER_ENDED" });
       void celebrate();
     },
+    // AI service can't start a session (no credits, busy, down): continue in free mode instead of a dead end.
+    onUnavailable: () => {
+      track("session_reset", { reason: "ai_unavailable_fallback_free" });
+      setFellBack(true);
+      setMode("free");
+      void free.start();
+    },
   });
+  const session = mode === "free" ? free : ai;
   const { phase, status } = session.state;
 
   // A garment the user just added goes on immediately (once live).
@@ -60,7 +74,10 @@ export function Onboarding() {
     const from = prevStep.current;
     prevStep.current = ui.step;
     if (from === ui.step) return;
-    if (from === "dressing") session.reset();
+    if (from === "dressing") {
+      ai.reset();
+      free.reset();
+    }
     if (from === "survey" && ui.step === "shop") {
       track("profile_answered", { gender: ui.gender, age_range: ui.age });
       void celebrate();
@@ -86,6 +103,13 @@ export function Onboarding() {
           garments={garments}
           closet={closet}
           onHoldPicker={() => session.holdForPicker()}
+          freeMode={mode === "free"}
+          fellBack={fellBack}
+          onToggleMode={() => {
+            if (session.state.phase !== "idle") return;
+            setFellBack(false);
+            setMode((m) => (m === "free" ? "ai" : "free"));
+          }}
           state={session.state}
           outputRef={session.outputRef}
           onStart={() => void session.start()}

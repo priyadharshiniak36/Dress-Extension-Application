@@ -49,6 +49,9 @@ export function DressingRoom({
   onNudgeShop,
   closet,
   onHoldPicker,
+  freeMode,
+  fellBack,
+  onToggleMode,
 }: {
   garments: readonly Garment[];
   state: TryOnState;
@@ -60,6 +63,11 @@ export function DressingRoom({
   closet: Closet;
   /** Tell the session we're about to open the OS camera/file picker (page will be backgrounded). */
   onHoldPicker: () => void;
+  /** Free on-device mode (no AI, no time cap) instead of the paid realtime AI session. */
+  freeMode: boolean;
+  /** Free mode was switched on automatically because AI try-on was unavailable. */
+  fellBack: boolean;
+  onToggleMode: () => void;
 }) {
   const live = state.phase === "live";
   const connecting = state.phase === "connecting" || state.phase === "camera";
@@ -197,6 +205,9 @@ export function DressingRoom({
                 <p role="status" aria-live="polite" className="mt-3 min-h-4 text-xs text-muted">
                   {state.status}
                 </p>
+                <button type="button" onClick={onToggleMode} className="mt-2 min-h-11 px-3 text-xs font-medium text-fg/70 underline decoration-white/20 underline-offset-4 hover:text-fg">
+                  {freeMode ? "Switch to AI mode (paid, more realistic)" : "Use free mode instead (no AI)"}
+                </button>
               </div>
             )}
           </div>
@@ -209,7 +220,7 @@ export function DressingRoom({
               <span className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em]">
                 <span className="pulse-dot h-2 w-2 rounded-full bg-live" /> Live
               </span>
-              <TimerRing seconds={state.secondsLeft} max={state.secondsMax} pinned={state.pinned} />
+              {state.secondsMax > 0 ? <TimerRing seconds={state.secondsLeft} max={state.secondsMax} pinned={state.pinned} /> : <span />}
             </div>
 
             {/* Hint / nudge toast */}
@@ -218,7 +229,11 @@ export function DressingRoom({
                 hint ? "opacity-100" : "pointer-events-none -translate-y-2 opacity-0"
               }`}
             >
-              Hold still — a new look drops every {ROTATION_SECONDS}s
+              {freeMode
+                ? fellBack
+                  ? "AI try-on is busy, so you're in free mode. Face the camera and tap a garment."
+                  : "Free mode: runs on your phone. Face the camera and tap a garment."
+                : `Hold still — a new look drops every ${ROTATION_SECONDS}s`}
             </div>
             <div
               className={`glass absolute left-1/2 top-20 z-20 flex w-[92%] -translate-x-1/2 items-center gap-2 rounded-2xl p-2 pl-4 transition duration-300 ${

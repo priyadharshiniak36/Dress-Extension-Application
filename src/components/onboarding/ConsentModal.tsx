@@ -47,10 +47,10 @@ export function ConsentModal({ pending, status, onAccept }: { pending: boolean; 
 
         <ul className="mb-6 space-y-3">
           <Point icon={<svg {...ic}><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>}>
-            Your camera streams live to our AI only while you&apos;re trying on.
+            Free mode runs on your phone and your camera never leaves it. In AI mode it streams live to our AI only while you&apos;re trying on.
           </Point>
           <Point icon={<svg {...ic}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>}>
-            Sessions end automatically after 3 minutes or when you leave the tab.
+            The camera turns off when you leave the tab, and AI sessions also end after 3 minutes.
           </Point>
           <Point icon={<svg {...ic}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>}>
             Tryanything doesn&apos;t record or store your video.
