@@ -20,8 +20,9 @@ export function Onboarding() {
   const closet = useCloset();
   const garments = useMemo(() => [...GARMENTS, ...closet.custom], [closet.custom]);
 
-  // Free on-device mode is the default (no AI cost). NEXT_PUBLIC_DEFAULT_MODE=ai makes the paid AI session the default.
-  const [mode, setMode] = useState<"ai" | "free">(process.env.NEXT_PUBLIC_DEFAULT_MODE === "ai" ? "ai" : "free");
+  // Decart live AI is the default. If it can't start (no credits, busy, down) the app falls back to free on-device mode
+  // automatically. NEXT_PUBLIC_DEFAULT_MODE=free makes the free mode the default instead.
+  const [mode, setMode] = useState<"ai" | "free">(process.env.NEXT_PUBLIC_DEFAULT_MODE === "free" ? "free" : "ai");
   const [fellBack, setFellBack] = useState(false);
 
   const free = useOverlaySession({ garments });

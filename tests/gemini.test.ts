@@ -73,7 +73,7 @@ describe("/api/v1/tryon-photo", () => {
 
   async function load(env: Record<string, string | undefined>) {
     vi.resetModules();
-    for (const k of ["DECART_API_KEY", "APP_ORIGINS", "GEMINI_API_KEY", "GEMINI_DAILY_LIMIT"]) delete process.env[k];
+    for (const k of ["DECART_API_KEY", "APP_ORIGINS", "GEMINI_API_KEY", "GEMINI_DAILY_LIMIT", "CATVTON_URL", "CATVTON_TOKEN", "TRYON_PROVIDER"]) delete process.env[k];
     Object.assign(process.env, { APP_ORIGINS: ORIGIN }, env);
     vi.doMock("@/lib/server/gemini", async (orig) => ({ ...(await orig<typeof import("@/lib/server/gemini")>()), generateTryOn: gen }));
     return import("@/app/api/v1/tryon-photo/route");
@@ -96,10 +96,10 @@ describe("/api/v1/tryon-photo", () => {
 
   it("GET reports whether the feature is configured, and never the key", async () => {
     const off = await load({});
-    expect(await (await off.GET(new Request("http://localhost/api/v1/tryon-photo", { headers: { origin: ORIGIN } }))).json()).toEqual({ enabled: false });
+    expect(await (await off.GET(new Request("http://localhost/api/v1/tryon-photo", { headers: { origin: ORIGIN } }))).json()).toEqual({ enabled: false, provider: null });
     const on = await load({ GEMINI_API_KEY: "SECRET" });
     const res = await on.GET(new Request("http://localhost/api/v1/tryon-photo", { headers: { origin: ORIGIN } }));
-    expect(await res.text()).toBe('{"enabled":true}');
+    expect(await res.text()).toBe(`{"enabled":true,"provider":"gemini"}`);
   });
 
   it("returns the generated image", async () => {

@@ -11,3 +11,6 @@ next-env.d.ts
 .DS_Store
 
 certificates
+__pycache__/
+.pytest_cache/
+*.pyc

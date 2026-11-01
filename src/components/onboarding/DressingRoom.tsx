@@ -236,7 +236,7 @@ export function DressingRoom({
             {/* Hint / nudge toast */}
             <div
               className={`glass absolute left-1/2 top-20 z-10 w-[86%] -translate-x-1/2 rounded-2xl px-4 py-3 text-center text-sm font-medium transition duration-500 ${
-                hint || state.hint ? "opacity-100" : "pointer-events-none -translate-y-2 opacity-0"
+                (hint || state.hint) && !nudge ? "opacity-100" : "pointer-events-none -translate-y-2 opacity-0"
               }`}
               role="status"
             >

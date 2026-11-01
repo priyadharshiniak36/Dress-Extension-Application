@@ -6,6 +6,7 @@ import { resolveAllowedOrigin } from "@/lib/server/origin";
 import { apiError } from "@/lib/server/http";
 import { sniffImageType } from "@/lib/server/safe-fetch";
 import { generateTryOn, GeminiError } from "@/lib/server/gemini";
+import { CLOTH_TYPES, CatvtonError, generateWithCatvton, type ClothType, type RawImage } from "@/lib/server/catvton";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,29 +17,33 @@ const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // the client downsizes to ~1024 px JPE
 const perIp = createRateLimiter({ limit: 3, windowMs: 60_000 });
 const global = createRateLimiter({ limit: Number(process.env.GEMINI_DAILY_LIMIT ?? 100), windowMs: 24 * 60 * 60 * 1000 });
 
-/** Lets the UI know whether to show the "realistic photo" button, without revealing anything about the key. */
+/** Lets the UI know whether (and which) realistic photo backend exists, without revealing anything about keys or URLs. */
 export async function GET(req: Request) {
   const env = getServerEnv();
-  if (!resolveAllowedOrigin(req.headers, env.appOrigins) && process.env.NODE_ENV === "production") {
-    return NextResponse.json({ enabled: false }, { headers: { "Cache-Control": "no-store" } });
-  }
-  return NextResponse.json({ enabled: Boolean(env.geminiApiKey) }, { headers: { "Cache-Control": "no-store" } });
+  const allowed = Boolean(resolveAllowedOrigin(req.headers, env.appOrigins)) || process.env.NODE_ENV !== "production";
+  const provider = allowed ? env.tryonProvider : null;
+  return NextResponse.json({ enabled: provider !== null, provider }, { headers: { "Cache-Control": "no-store" } });
 }
 
-async function readImage(form: FormData, field: string): Promise<{ mime: string; base64: string } | "too_large" | "bad_type" | null> {
+async function readImage(form: FormData, field: string): Promise<RawImage | "too_large" | "bad_type" | null> {
   const f = form.get(field);
   if (!(f instanceof File) || f.size === 0) return null;
   if (f.size > MAX_IMAGE_BYTES) return "too_large";
   const bytes = new Uint8Array(await f.arrayBuffer());
   const mime = sniffImageType(bytes);
   if (!mime || mime === "image/gif") return "bad_type"; // trust the bytes, not the declared type
-  return { mime, base64: Buffer.from(bytes).toString("base64") };
+  return { mime, bytes };
 }
+
+const b64 = (i: RawImage) => ({ mime: i.mime, base64: Buffer.from(i.bytes).toString("base64") });
+const image = (img: RawImage) =>
+  new Response(Buffer.from(img.bytes), { headers: { "Content-Type": img.mime, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 
 export async function POST(req: Request) {
   const env = getServerEnv();
   if (!resolveAllowedOrigin(req.headers, env.appOrigins)) return apiError(403, "forbidden_origin", "Not allowed.");
-  if (!env.geminiApiKey) return apiError(503, "not_configured", "Realistic photo try-on is not available right now.");
+  const provider = env.tryonProvider;
+  if (!provider) return apiError(503, "not_configured", "Realistic photo try-on is not available right now.");
 
   const rl = perIp(clientIp(req.headers));
   if (!rl.ok) return apiError(429, "rate_limited", "Too many attempts. Please wait a minute.", { "Retry-After": String(rl.retryAfterSeconds) });
@@ -57,18 +62,31 @@ export async function POST(req: Request) {
   if (person === "bad_type" || garment === "bad_type") return apiError(415, "not_image", "Use JPEG, PNG or WebP images.");
   if (!person || !garment) return apiError(400, "invalid_body", "Send a multipart form with `person` and `garment` images.");
 
+  const rawType = form.get("clothType");
+  const clothType: ClothType = (CLOTH_TYPES as readonly string[]).includes(String(rawType)) ? (rawType as ClothType) : "upper";
+
   const started = Date.now();
   try {
-    const img = await generateTryOn({ apiKey: env.geminiApiKey, model: env.geminiImageModel, person, garment });
-    logger.info("tryon_photo.ok", { model: env.geminiImageModel, ms: Date.now() - started }); // never log image data
-    return new Response(Buffer.from(img.base64, "base64"), {
-      headers: { "Content-Type": img.mime, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
-    });
+    if (provider === "catvton") {
+      const out = await generateWithCatvton({ url: env.catvtonUrl!, token: env.catvtonToken!, person, garment, clothType });
+      logger.info("tryon_photo.ok", { provider, cloth_type: clothType, ms: Date.now() - started }); // never log image data
+      return image(out);
+    }
+    const img = await generateTryOn({ apiKey: env.geminiApiKey!, model: env.geminiImageModel, person: b64(person), garment: b64(garment) });
+    logger.info("tryon_photo.ok", { provider, model: env.geminiImageModel, ms: Date.now() - started });
+    return image({ mime: img.mime, bytes: Buffer.from(img.base64, "base64") });
   } catch (err) {
-    const e = err instanceof GeminiError ? err : null;
-    logger.error("tryon_photo.failed", { code: e?.code ?? "unknown", upstream_status: e?.status ?? null, error: e?.message ?? String(err), ms: Date.now() - started });
-    if (e?.code === "quota") return apiError(429, "rate_limited", "Realistic photo try-on is busy. Please try again later.");
-    if (e?.code === "no_image") return apiError(422, "not_image", "Couldn't create a picture from that photo. Try a clearer one, facing the camera.");
+    const g = err instanceof GeminiError ? err : null;
+    const c = err instanceof CatvtonError ? err : null;
+    logger.error("tryon_photo.failed", {
+      provider,
+      code: g?.code ?? c?.code ?? "unknown",
+      upstream_status: g?.status ?? c?.status ?? null,
+      error: g?.message ?? c?.message ?? String(err),
+      ms: Date.now() - started,
+    });
+    if (g?.code === "quota" || c?.code === "busy") return apiError(429, "rate_limited", "Realistic photo try-on is busy or warming up. Please try again in a minute.");
+    if (g?.code === "no_image" || c?.code === "rejected") return apiError(422, "not_image", "Couldn't create a picture from that photo. Try a clearer one, facing the camera.");
     return apiError(502, "upstream_failed", "Realistic photo try-on couldn't run right now. Please try again.");
   }
 }

@@ -8,6 +8,12 @@ import { Button } from "@/components/ui";
 
 type Step = "idle" | "confirm" | "working" | "done" | "error";
 
+const CLOTH_CHOICES = [
+  { value: "upper", label: "Top" },
+  { value: "lower", label: "Bottom" },
+  { value: "overall", label: "Dress / set" },
+] as const;
+
 async function garmentBlob(g: Garment): Promise<Blob> {
   if (g.custom) return g.custom.blob;
   const res = await fetch(g.image);
@@ -17,11 +23,14 @@ async function garmentBlob(g: Garment): Promise<Blob> {
 
 /**
  * "Realistic photo" button + flow: takes a clean camera photo, sends it with the selected garment to our server,
- * which asks Google Gemini to dress the person in it. Shown only when the server has a GEMINI_API_KEY.
+ * which has our self-hosted CatVTON server (or Google Gemini) dress the person in it. Shown only when the server
+ * reports a configured provider.
  * The photo leaves the device only after the visitor confirms.
  */
 export function PhotoTryOn({ garment, capture }: { garment: Garment | undefined; capture: () => Promise<Blob | null> }) {
   const [enabled, setEnabled] = useState(false);
+  const [provider, setProvider] = useState<"catvton" | "gemini" | null>(null);
+  const [clothType, setClothType] = useState<"upper" | "lower" | "overall">("upper");
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState("");
   const [result, setResult] = useState<string | null>(null);
@@ -31,7 +40,11 @@ export function PhotoTryOn({ garment, capture }: { garment: Garment | undefined;
     let off = false;
     fetch("/api/v1/tryon-photo", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { enabled: false }))
-      .then((j: { enabled?: boolean }) => !off && setEnabled(Boolean(j.enabled)))
+      .then((j: { enabled?: boolean; provider?: "catvton" | "gemini" | null }) => {
+        if (off) return;
+        setEnabled(Boolean(j.enabled));
+        setProvider(j.provider ?? null);
+      })
       .catch(() => {});
     return () => {
       off = true;
@@ -65,6 +78,7 @@ export function PhotoTryOn({ garment, capture }: { garment: Garment | undefined;
       const form = new FormData();
       form.append("person", person.current!, "person.jpg");
       form.append("garment", await garmentBlob(garment), "garment.jpg");
+      form.append("clothType", clothType);
       const res = await fetch("/api/v1/tryon-photo", { method: "POST", body: form });
       if (!res.ok) {
         const e = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -108,9 +122,32 @@ export function PhotoTryOn({ garment, capture }: { garment: Garment | undefined;
               <>
                 <h3 className="font-display text-xl font-bold">Make a realistic photo?</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted">
-                  We&apos;ll send this one photo of you and the garment to Google&apos;s Gemini AI to create a picture of you wearing it. It
-                  takes a few seconds. We don&apos;t store the photo. Only continue if you&apos;re OK with that.
+                  {provider === "catvton"
+                    ? "We'll send this one photo of you and the garment to our try-on server to create a picture of you wearing it."
+                    : "We'll send this one photo of you and the garment to Google's Gemini AI to create a picture of you wearing it."}{" "}
+                  It takes a few seconds. We don&apos;t store the photo. Only continue if you&apos;re OK with that.
                 </p>
+                {provider === "catvton" && (
+                  <div className="mt-3" role="radiogroup" aria-label="What is the garment?">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted">The garment is a</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {CLOTH_CHOICES.map((c) => (
+                        <button
+                          key={c.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={clothType === c.value}
+                          onClick={() => setClothType(c.value)}
+                          className={`min-h-11 rounded-xl border px-2 text-sm font-medium transition ${
+                            clothType === c.value ? "border-lime bg-lime text-bg" : "border-line bg-raised text-fg/80"
+                          }`}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <Button variant="ghost" onClick={close}>
                     Cancel
@@ -122,7 +159,9 @@ export function PhotoTryOn({ garment, capture }: { garment: Garment | undefined;
             {step === "working" && (
               <div className="py-6 text-center" aria-live="polite">
                 <p className="font-display text-lg font-bold text-lime">Creating your photo…</p>
-                <p className="mt-2 text-sm text-muted">This takes about 10 seconds.</p>
+                <p className="mt-2 text-sm text-muted">
+                  {provider === "catvton" ? "This can take 20–60 seconds, longer if the server is waking up." : "This takes about 10 seconds."}
+                </p>
               </div>
             )}
             {step === "done" && result && (

@@ -55,7 +55,7 @@ Same-origin gated, 20 req/min/IP, https only, no credentials or custom ports, DN
 **pinned** for the connection (no DNS rebinding), redirects re-validated (max 3), 8 MB streaming cap, 8 s deadline,
 body must sniff as JPEG/PNG/WebP/GIF (SVG refused; remote `Content-Type` ignored). Covered by `tests/garment-image.test.ts`.
 
-## Free on-device mode (default)
+## Free on-device mode (fallback)
 Decart's realtime AI is paid per second (about $0.02/s), and an account with no credits gets
 `Insufficient credits` (WebSocket close 1008). So the app now has two modes:
 
@@ -67,7 +67,7 @@ Decart's realtime AI is paid per second (about $0.02/s), and an account with no 
 | Camera data | never leaves the device | streamed to Decart |
 | Time cap | none | 60 s demo / 180 s token cap |
 
-- Switch with the link under "Turn on camera". Set `NEXT_PUBLIC_DEFAULT_MODE=ai` to make AI the default.
+- **AI mode (Decart) is the default.** Switch with the link under "Turn on camera". Set `NEXT_PUBLIC_DEFAULT_MODE=free` to make free mode the default.
 - If AI mode can't start (no credits, busy, down) the app **falls back to free mode automatically**.
 - Works with every garment input (uploads, drops, camera photos, links). Best for tops, jackets and hoodies; long
   garments (dresses, trousers) are extended down the body direction from the shoulders and do not follow the legs.
@@ -83,6 +83,22 @@ Decart's realtime AI is paid per second (about $0.02/s), and an account with no 
 - Verified: production build (CSP on), simulated camera showing MediaPipe's sample photo: reaches LIVE in ~3 s with no
   CSP violations and draws the garment on the torso; consent dialog closes correctly; 61/61 tests.
   **Not verified:** real phone cameras, frame rate on low-end phones, iOS Safari (`canvas.captureStream` needs iOS 15+).
+
+## Self-hosted CatVTON (realistic photo, no per-photo fee)
+`tryon-server/` is a small FastAPI service around the open-source CatVTON model (the same kind of model OpenTryOn
+exposes as "CatVTON (local weights)"). It removes the person's current clothing and fits the new garment. Still photos only,
+needs an NVIDIA GPU (README states about 8 GB VRAM for bf16 at 1024×768), and **CatVTON's code and weights are
+CC BY-NC-SA 4.0 (non-commercial)**. Setup, license and troubleshooting: `tryon-server/README.md`.
+
+- The website picks the backend: `CATVTON_URL` + `CATVTON_TOKEN` set → CatVTON; else `GEMINI_API_KEY` → Gemini; else the
+  button is hidden. `TRYON_PROVIDER` forces a choice. The confirm dialog names the real destination, and for CatVTON the
+  visitor picks Top / Bottom / Dress (`upper` / `lower` / `overall`).
+- Also fixed: blank values such as `DECART_API_KEY=` (as in a copied `.env.example`) used to make the token route throw;
+  they are now treated as "not set". `CATVTON_URL` must be https (http://localhost allowed for development).
+- **Verified:** 10 Python API tests (auth, validation, limits, queue, errors) and 11 new web tests; an end-to-end run with the
+  real FastAPI server + a stand-in model proved the website route ↔ server contract (token, multipart fields, cloth type,
+  PNG back, origin check). **Not verified:** the real CatVTON model (no NVIDIA GPU available here), the Docker build, result
+  quality, and latency. Expect to debug the first GPU run.
 
 ## Realistic photo (Google Gemini)
 A "Realistic photo" button appears in free mode when the server has `GEMINI_API_KEY`. It takes one clean camera photo,
